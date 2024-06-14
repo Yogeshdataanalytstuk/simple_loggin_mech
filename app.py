@@ -1,86 +1,154 @@
-import tkinter as tk
-from tkinter import messagebox
+import sys
+from PyQt5.QtWidgets import QApplication, QMainWindow, QWidget, QVBoxLayout, QHBoxLayout, QLabel, QLineEdit, QPushButton, QMessageBox
+from PyQt5.QtCore import Qt, QTimer 
 import requests
 import cv2
-from PIL import Image, ImageTk
-import threading
+from PyQt5.QtGui import QImage, QPixmap
+import numpy as np
 
-def center_window(root, width, height):
-    screen_width = root.winfo_screenwidth()
-    screen_height = root.winfo_screenheight()
-    x = (screen_width // 2) - (width // 2)
-    y = (screen_height // 2) - (height // 2)
-    root.geometry(f'{width}x{height}+{x}+{y}')
+# Global initialization of the cap variable
+cap = None
 
-def clear_widgets():
-    global cap
-    if cap:
-        cap.release()
-    for widget in root.winfo_children():
-        widget.destroy()
+class MainWindow(QMainWindow):
+    def __init__(self):
+        super().__init__()
+        self.initUI()
 
-def show_login_page():
-    global cap
-    cap = None  # Ensure cap is reset when returning to the login page
-    clear_widgets()
-    root.title("CCTV LPR")
-    center_window(root, 500, 500)
-    tk.Label(root, text="Username:").pack()
-    global entry_user
-    entry_user = tk.Entry(root)
-    entry_user.pack()
-    tk.Label(root, text="Password:").pack()
-    global entry_pass
-    entry_pass = tk.Entry(root, show="*")
-    entry_pass.pack()
-    tk.Button(root, text="Login", command=verify_login).pack()
+    def initUI(self):
+        self.setWindowTitle('CCTV LPR')
+        self.central_widget = QWidget()
+        self.setCentralWidget(self.central_widget)
+        self.layout = QVBoxLayout()
+        self.central_widget.setLayout(self.layout)
+        self.apply_styles()
+        self.show_login_page()
 
-def verify_login():
-    username = entry_user.get()
-    password = entry_pass.get()
-    try:
-        response = requests.post('http://127.0.0.1:5000/login', json={"username": username, "password": password}, verify=False)
-        if response.status_code == 200:
-            response_data = response.json()
-            ip_address = response_data.get("ip_address", "N/A")
-            login_success(username, ip_address)
-        else:
-            messagebox.showerror("Login Failed", "Invalid Username or Password")
-    except requests.exceptions.RequestException as e:
-        messagebox.showerror("Login Failed", str(e))
+    def apply_styles(self):
+        self.setStyleSheet("""
+            QWidget {
+                font-size: 14px;
+                background-color: white; /* Set the background color to white */
+            }
+            QLabel {
+                color: #333;
+                font-weight: bold; /* Make text bold */
+            }
+            QLineEdit {
+                border: 1px solid #ccc;
+                padding: 5px;
+                border-radius: 4px;
+                background-color: white;
+                color: black;
+                width: 200px; /* Smaller width */
+                max-width: 200px;
+            }
+            QPushButton {
+                background-color: #5CACEE;
+                color: white;
+                border-radius: 4px;
+                padding: 5px;
+                font-weight: bold;
+            }
+            QPushButton:hover {
+                background-color: #1E90FF;
+            }
+        """)
 
-def login_success(username, ip_address):
-    clear_widgets()
-    root.title("LPR")
-    #tk.Label(root, text=f"Welcome {username} to LPR (License Plate Recognition) Application").pack(side='top', fill='x')
-    tk.Label(root, text=f"camera1").pack(side='top', fill='x')
+    def clear_widgets(self):
+        global cap
+        if cap is not None:
+            cap.release()
+            cap = None
+        while self.layout.count():
+            item = self.layout.takeAt(0)
+            widget = item.widget()
+            if widget is not None:
+                widget.deleteLater()
 
-    video_url = f"{ip_address}"  # Adjusted for RTSP stream
-    global cap
-    cap = cv2.VideoCapture(video_url)
 
-    def update_frame():
+    def center_window(self, width, height):
+        screen = self.screen().geometry()
+        x = (screen.width() - width) // 2
+        y = (screen.height() - height) // 2
+        self.setGeometry(x, y, width, height)
+
+    def show_login_page(self):
+        self.clear_widgets()
+        self.setWindowTitle("CCTV LPR")
+        self.center_window(500, 500)
+
+        # Layout for username
+        username_layout = QHBoxLayout()
+        username_label = QLabel("Username:", self)
+        username_layout.addWidget(username_label)
+        self.entry_user = QLineEdit(self)
+        username_layout.addWidget(self.entry_user)
+        self.layout.addLayout(username_layout)
+
+        # Layout for password
+        password_layout = QHBoxLayout()
+        password_label = QLabel("Password:", self)
+        password_layout.addWidget(password_label)
+        self.entry_pass = QLineEdit(self)
+        self.entry_pass.setEchoMode(QLineEdit.Password)
+        password_layout.addWidget(self.entry_pass)
+        self.layout.addLayout(password_layout)
+
+        login_button = QPushButton("Login", self)
+        login_button.clicked.connect(self.verify_login)
+        self.layout.addWidget(login_button)
+
+    def verify_login(self):
+        username = self.entry_user.text()
+        password = self.entry_pass.text()
+        try:
+            response = requests.post('http://127.0.0.1:5001/login', json={"username": username, "password": password}, verify=False)
+            if response.status_code == 200:
+                response_data = response.json()
+                ip_address = response_data.get("ip_address", "N/A")
+                self.login_success(username, ip_address)
+            else:
+                QMessageBox.critical(self, "Login Failed", "Invalid Username or Password")
+        except requests.exceptions.RequestException as e:
+            QMessageBox.critical(self, "Login Failed", str(e))
+
+    def login_success(self, username, ip_address):
+        self.clear_widgets()
+        self.setWindowTitle("LPR System")
+
+        # Start video capture
+        global cap
+        cap = cv2.VideoCapture(ip_address)
+
+        # Create and add the video display label to the layout
+        self.video_label = QLabel(self)
+        self.layout.addWidget(self.video_label)
+        self.update_frame()
+
+        # Create and add a logout button to the layout
+        logout_button = QPushButton("Logout", self)
+        logout_button.clicked.connect(self.show_login_page)
+        self.layout.addWidget(logout_button)
+
+        # Adjust the window size for the video and logout button
+        self.center_window(800, 600)
+
+
+    def update_frame(self):
+        global cap
         if cap.isOpened():
             ret, frame = cap.read()
             if ret:
-                cv_frame = cv2.cvtColor(frame, cv2.COLOR_BGR2RGB)
-                img = Image.fromarray(cv_frame)
-                imgtk = ImageTk.PhotoImage(image=img.resize((500, 500)))
-                video_label.imgtk = imgtk
-                video_label.configure(image=imgtk)
-            video_label.after(100, update_frame)  # Adjusted refresh rate to 100 ms
-        else:
-            video_label.after(100, update_frame)  # Keep trying if cap isn't opened yet
+                frame = cv2.cvtColor(frame, cv2.COLOR_BGR2RGB)
+                height, width, channel = frame.shape
+                bytesPerLine = 3 * width
+                qImg = QImage(frame.data, width, height, bytesPerLine, QImage.Format_RGB888)
+                self.video_label.setPixmap(QPixmap.fromImage(qImg))
+        self.video_label.repaint()
+        QTimer.singleShot(100, self.update_frame)
 
-    video_label = tk.Label(root)
-    video_label.pack()
-    update_frame()
-
-    logout_button = tk.Button(root, text="Logout", command=show_login_page)
-    logout_button.pack(side='right', padx=5, pady=5)
-
-    center_window(root, 800, 600)
-
-root = tk.Tk()
-show_login_page()
-root.mainloop()
+if __name__ == '__main__':
+    app = QApplication(sys.argv)
+    ex = MainWindow()
+    ex.show()
+    sys.exit(app.exec_())
