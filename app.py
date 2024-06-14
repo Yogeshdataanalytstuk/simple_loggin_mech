@@ -144,7 +144,8 @@ class MainWindow(QMainWindow):
                 bytesPerLine = 3 * width
                 qImg = QImage(frame.data, width, height, bytesPerLine, QImage.Format_RGB888)
                 self.video_label.setPixmap(QPixmap.fromImage(qImg))
-        self.video_label.repaint()
+            else:
+                print("Failed to capture frame")  # Add more robust logging or error handling here
         QTimer.singleShot(100, self.update_frame)
 
 if __name__ == '__main__':
